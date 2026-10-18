@@ -1,0 +1,22 @@
+# Mutants declared equivalent, one per line:
+#   file | source line, trimmed | token -> replacement | why the behavior cannot change
+# The tool matches on the source text, not the line number, and reports these separately.
+round.go | if math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | an infinite a then reaches the overflow branch, which returns r and -sign(r); rd and ru map that to the same bound, because no well-formed operation asks for a lower bound of +Inf or an upper bound of -Inf
+round.go | if math.IsInf(a, 0) || math.IsInf(b, 0) { | b -> a | same as a -> b, for an infinite b
+round.go | if math.Abs(a) < huge && math.Abs(b) < huge { | a -> b | the guard only chooses between TwoSum and the exact math/big comparison; both give the exact sign
+round.go | if math.Abs(a) < huge && math.Abs(b) < huge { | b -> a | same: both paths are exact
+round.go | if math.Abs(a) < huge && math.Abs(b) < huge { | < -> <= | at exactly 2^1000 both paths are exact
+round.go | if math.Abs(r) >= tiny { | >= -> > | at exactly 2^-900 both the FMA path and math/big are exact
+round.go | if a == 0 || math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | b is never 0 here; a == 0 then takes the math/big path, which finds the exact quotient 0; an infinite a reaches the overflow branch as in addDir
+round.go | aa, ab := math.Abs(a), math.Abs(b) | b -> a | the guard on b is conservative: with r and a in range the FMA remainder is exact for any b, so dropping it only moves cases from math/big to the FMA path
+round.go | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | >= -> > | at exactly the threshold both paths are exact
+round.go | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | <= -> < | at exactly the threshold both paths are exact
+round.go | if x >= tiny && x <= huge { | >= -> > | at exactly the threshold both paths are exact
+round.go | if x >= tiny && x <= huge { | <= -> < | at exactly the threshold both paths are exact
+arith.go | case a > 0: | > -> >= | in this branch a == 0 gives divDown(0, d) = 0, the same bound as the a == 0 case below
+arith.go | case a > 0: | a -> b | x is not mixed here, so b > 0 holds exactly when a >= 0, and a == 0 gives the same bound as its own case
+arith.go | case b == 0: // x = [a, 0], a < 0 | b -> a | a < 0 here, so the default case runs with b == 0 and gives the same bound
+arith.go | case b == 0: | b -> a | a < 0 here, so the default case runs with b == 0 and gives the same bound
+arith.go | case n > 0: | > -> >= | n == 0 returned earlier
+arith.go | if x.Lo >= 0 { | >= -> > | for Lo == 0 the other branch gives -powUp(0, n) = -0, the same value
+arith.go | if x.Hi >= 0 { | >= -> > | for Hi == 0 the other branch gives -powDown(0, n) = -0, the same value

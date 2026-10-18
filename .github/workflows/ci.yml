@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        go: ['1.26.x', '1.27.x']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: vet
+        run: go vet ./...
+      - name: gofumpt
+        run: test -z "$(go run mvdan.cc/gofumpt@latest -l .)"
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+      - name: test
+        run: go test -race -count=1 ./...
+      - name: fuzz (short)
+        run: |
+          for t in FuzzAdd FuzzSub FuzzMul FuzzDiv FuzzDivSplit FuzzUnary FuzzParse; do
+            go test -run '^$' -fuzz "^${t}\$" -fuzztime 20s . || exit 1
+          done
+
+  mutants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+      - name: mutation testing
+        run: go run ./internal/mutants -min 95
