@@ -51,7 +51,7 @@ var swaps = map[string][]string{
 
 type mutant struct {
 	file, desc string
-	key        string // file | trimmed source line | token -> replacement
+	key        string // file | function | trimmed source line | token -> replacement
 	src        []byte
 }
 
@@ -67,8 +67,8 @@ func loadEquivalent(path string) map[string]bool {
 			continue
 		}
 		f := strings.Split(line, " | ")
-		if len(f) >= 3 {
-			eq[f[0]+" | "+f[1]+" | "+f[2]] = true
+		if len(f) >= 4 {
+			eq[f[0]+" | "+f[1]+" | "+f[2]+" | "+f[3]] = true
 		}
 	}
 	return eq
@@ -148,6 +148,16 @@ func generate(name string, src []byte) []mutant {
 	var s scanner.Scanner
 	s.Init(file, src, nil, 0)
 	lines := bytes.Split(src, []byte("\n"))
+	// fn[i] is the name of the function that line i+1 belongs to, so that equal source lines in
+	// two functions get different keys.
+	fn := make([]string, len(lines))
+	cur := ""
+	for i, l := range lines {
+		if t := string(l); strings.HasPrefix(t, "func ") {
+			cur = funcName(t)
+		}
+		fn[i] = cur
+	}
 	var out []mutant
 	for {
 		pos, tok, lit := s.Scan()
@@ -173,11 +183,25 @@ func generate(name string, src []byte) []mutant {
 			b = append(b, src[:off]...)
 			b = append(b, r...)
 			b = append(b, src[off+len(text):]...)
-			key := name + " | " + strings.TrimSpace(line) + " | " + text + " -> " + r
+			key := name + " | " + fn[p.Line-1] + " | " + strings.TrimSpace(line) + " | " + text + " -> " + r
 			out = append(out, mutant{name, fmt.Sprintf("%d:%d %s -> %s", p.Line, p.Column, text, r), key, b})
 		}
 	}
 	return out
+}
+
+// funcName returns the function or method name from a line that starts with "func ".
+func funcName(line string) string {
+	rest := strings.TrimPrefix(line, "func ")
+	if strings.HasPrefix(rest, "(") {
+		if i := strings.Index(rest, ") "); i >= 0 {
+			rest = rest[i+2:]
+		}
+	}
+	if i := strings.IndexAny(rest, "([ "); i >= 0 {
+		rest = rest[:i]
+	}
+	return rest
 }
 
 // run copies the module to a temporary directory with the mutated file and runs the short tests.
