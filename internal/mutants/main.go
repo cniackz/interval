@@ -51,7 +51,7 @@ var swaps = map[string][]string{
 
 type mutant struct {
 	file, desc string
-	key        string // file | function | trimmed source line | token -> replacement
+	key        string // file | function | trimmed source line | token -> replacement #occurrence
 	src        []byte
 }
 
@@ -159,6 +159,7 @@ func generate(name string, src []byte) []mutant {
 		fn[i] = cur
 	}
 	var out []mutant
+	seen := map[string]int{} // occurrences of a token text on a line, for the key
 	for {
 		pos, tok, lit := s.Scan()
 		if tok == token.EOF {
@@ -178,12 +179,15 @@ func generate(name string, src []byte) []mutant {
 			continue
 		}
 		off := file.Offset(pos)
+		occKey := fmt.Sprintf("%d %s", p.Line, text)
+		seen[occKey]++
+		occ := seen[occKey]
 		for _, r := range repl {
 			b := make([]byte, 0, len(src)+4)
 			b = append(b, src[:off]...)
 			b = append(b, r...)
 			b = append(b, src[off+len(text):]...)
-			key := name + " | " + fn[p.Line-1] + " | " + strings.TrimSpace(line) + " | " + text + " -> " + r
+			key := fmt.Sprintf("%s | %s | %s | %s -> %s #%d", name, fn[p.Line-1], strings.TrimSpace(line), text, r, occ)
 			out = append(out, mutant{name, fmt.Sprintf("%d:%d %s -> %s", p.Line, p.Column, text, r), key, b})
 		}
 	}

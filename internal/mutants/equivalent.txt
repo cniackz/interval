@@ -1,5 +1,6 @@
 # Mutants declared equivalent, one per line:
-#   file | function | source line, trimmed | token -> replacement | why the behavior cannot change
+#   file | function | source line, trimmed | token -> replacement #n | why the behavior cannot change
+# where #n is the occurrence of that token on the line, counted from the left.
 # The tool matches on file, function and source text (not the line number) and reports these
 # separately from real survivors. A declared mutant that the tests kill fails the run, so a wrong
 # declaration cannot hide.
@@ -15,7 +16,8 @@
 #      and 2^1000 guards. A mutant that moves a guard by one comparison (< to <=, >= to >) only
 #      changes which exact path handles the single value 2^-900 or 2^1000, where both preconditions
 #      hold, so r and the sign are the same.
-#   F2 (infinite operands). Without its infinity check, an infinite operand of addDir or mulDir
+#   F2 (infinite operands; kept for the record, no declaration relies on it since the 2026-10-18
+#      audit found the five F2 mutants killable by calling the helpers directly). Without its infinity check, an infinite operand of addDir or mulDir
 #      reaches "if math.IsInf(r, 0) { return r, -sign(r) }". rd(+Inf, -1) is MaxFloat64 and
 #      ru(-Inf, +1) is -MaxFloat64, so the result differs from the exact path only if a caller asks
 #      for a lower bound that is +Inf or an upper bound that is -Inf. No caller does: Add, Sub, Mul
@@ -24,24 +26,24 @@
 #      lower-bound product or quotient of an infinity is -Inf; powDown is only called on Mig() and
 #      on -Hi, which are finite for a non-empty interval. The 0 * Inf rule is checked before
 #      these lines and is not affected.
-round.go | addDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | F2: with the check reading only b, an infinite a takes the overflow branch, whose bounds match the exact path for every bound a caller asks for
-round.go | mulDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | F2, for mulDir
-round.go | addDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | b -> a | F2, with the roles of a and b swapped
-round.go | mulDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | b -> a | F2, for mulDir, with the roles of a and b swapped
-round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | a -> b | F1: the guard then tests b twice, so some sums with |a| >= 2^1000 go to TwoSum; TwoSum stays exact for them because it is exact for every finite pair whose sum does not overflow, and overflow returned earlier
-round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | b -> a | F1, same as a -> b with the roles swapped
-round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | < -> <= | F1: only |a| or |b| exactly 2^1000 changes path, and both paths are exact there
-round.go | mulDir | if math.Abs(r) >= tiny { | >= -> > | F1: only |r| exactly 2^-900 changes path; there e_a + e_b >= -901 > -970, so the FMA error is exact, and math/big is exact by construction
-round.go | divDir | if a == 0 || math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | b is never 0 here (Div and DivSplit return before dividing by an interval whose endpoint used here is 0), so the first test is false; then a == 0 falls through to the math/big path (|a| < 2^-900), which compares 0 with r * b = 0 and returns d = 0, the same as the early return; an infinite a reaches the overflow branch, and F2 applies
-round.go | divDir | aa, ab := math.Abs(a), math.Abs(b) | b -> a | F1: ab becomes |a|, so the guard stops checking |b|; when |a| and |r| are in [2^-900, 2^1000] the remainder a - r*b has magnitude below ulp(r) * |b|, about |a| * 2^-52 >= 2^-952, far above the underflow threshold, so the FMA remainder is still exact (Bohlender et al. 1991) and the sign is the same
-round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | >= -> > | F1: only a value exactly equal to 2^-900 changes path, and both paths are exact there
-round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | <= -> < | F1: only a value exactly equal to 2^1000 changes path, and both paths are exact there
-round.go | sqrtDir | if x >= tiny && x <= huge { | >= -> > | F1: only x exactly 2^-900 changes path; its square root 2^-450 is exact, so both paths return d = 0
-round.go | sqrtDir | if x >= tiny && x <= huge { | <= -> < | F1: only x exactly 2^1000 changes path; its square root 2^500 is exact, so both paths return d = 0
-arith.go | Div | case a > 0: | > -> >= | this case is reached with x not mixed and not [0, 0]; the mutant also sends a == 0 here, giving mk(divDown(0, d), inf) = mk(0, inf) (divDir returns 0 exactly for a == 0), which is what the a == 0 case returns
-arith.go | Div | case a > 0: | a -> b | x is not mixed, so either a >= 0 (then b > 0) or b <= 0; b > 0 therefore selects a > 0 plus a == 0, and a == 0 gives the same result as its own case, as in the previous line
-arith.go | Div | case b == 0: // x = [a, 0], a < 0 | b -> a | a < 0 when this line is reached (a > 0 and a == 0 matched earlier), so the mutant test a == 0 is false and the default case runs with b == 0: mk(-inf, divUp(0, d)) = mk(-inf, 0), the same result
-arith.go | Div | case b == 0: | b -> a | the same argument in the y = [c, 0] branch: the default case gives mk(divDown(0, c), inf) = mk(0, inf)
-arith.go | Pown | case n > 0: | > -> >= | the previous case returned for n == 0, so n > 0 and n >= 0 select the same values
-arith.go | powPos | if x.Lo >= 0 { | >= -> > | only Lo == 0 changes branch; the other branch gives -powUp(-0, n) = -0 for n >= 1, and mk stores a zero lower bound as -0 in both cases
-arith.go | powPos | if x.Hi >= 0 { | >= -> > | only Hi == 0 changes branch; the other branch gives -powDown(-0, n) = -0, and mk stores a zero upper bound as +0 in both cases
+round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | a -> b #1 | F1: the guard then tests b twice, so some sums with |a| >= 2^1000 go to TwoSum; TwoSum stays exact for them because it is exact for every finite pair whose sum does not overflow, and overflow returned earlier
+round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | b -> a #1 | F1, same as a -> b with the roles swapped
+round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | < -> <= #1 | F1: only |a| or |b| exactly 2^1000 changes path, and both paths are exact there
+round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | < -> <= #2 | F1: only |a| or |b| exactly 2^1000 changes path, and both paths are exact there
+round.go | mulDir | if math.Abs(r) >= tiny { | >= -> > #1 | F1: only |r| exactly 2^-900 changes path; there e_a + e_b >= -901 > -970, so the FMA error is exact, and math/big is exact by construction
+round.go | divDir | if a == 0 || math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b #1 | b is never 0 here (Div and DivSplit never divide by a zero endpoint), so the mutant test b == 0 is false and a == 0 falls through to the math/big path (|a| < 2^-900), which compares 0 with r * b = 0 and returns d = 0, the same as the early return. Only the first a on the line (a == 0) is declared; the second (math.IsInf(a, 0)) is killed by TestHelpersInfinite
+round.go | divDir | aa, ab := math.Abs(a), math.Abs(b) | b -> a #1 | F1: ab becomes |a|, so the guard stops checking |b|; when |a| and |r| are in [2^-900, 2^1000] the remainder a - r*b has magnitude below ulp(r) * |b|, about |a| * 2^-52 >= 2^-952, far above the underflow threshold, so the FMA remainder is still exact (Bohlender et al. 1991) and the sign is the same
+round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | >= -> > #1 | F1 (aa): only a value exactly equal to 2^-900 changes path, and both paths are exact there
+round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | >= -> > #2 | F1 (ab): only a value exactly equal to 2^-900 changes path, and both paths are exact there
+round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | >= -> > #3 | F1 (|r|): only a value exactly equal to 2^-900 changes path, and both paths are exact there
+round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | <= -> < #1 | F1 (aa): only a value exactly equal to 2^1000 changes path, and both paths are exact there
+round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | <= -> < #2 | F1 (ab): only a value exactly equal to 2^1000 changes path, and both paths are exact there
+round.go | sqrtDir | if x >= tiny && x <= huge { | >= -> > #1 | F1: only x exactly 2^-900 changes path; its square root 2^-450 is exact, so both paths return d = 0
+round.go | sqrtDir | if x >= tiny && x <= huge { | <= -> < #1 | F1: only x exactly 2^1000 changes path; its square root 2^500 is exact, so both paths return d = 0
+arith.go | Div | case a > 0: | > -> >= #1 | this case is reached with x not mixed and not [0, 0]; the mutant also sends a == 0 here, giving mk(divDown(0, d), inf) = mk(0, inf) (divDir returns 0 exactly for a == 0), which is what the a == 0 case returns
+arith.go | Div | case a > 0: | a -> b #1 | x is not mixed, so either a >= 0 (then b > 0) or b <= 0; b > 0 therefore selects a > 0 plus a == 0, and a == 0 gives the same result as its own case, as in the previous line
+arith.go | Div | case b == 0: // x = [a, 0], a < 0 | b -> a #1 | a < 0 when this line is reached (a > 0 and a == 0 matched earlier), so the mutant test a == 0 is false and the default case runs with b == 0: mk(-inf, divUp(0, d)) = mk(-inf, 0), the same result
+arith.go | Div | case b == 0: | b -> a #1 | the same argument in the y = [c, 0] branch: the default case gives mk(divDown(0, c), inf) = mk(0, inf)
+arith.go | Pown | case n > 0: | > -> >= #1 | the previous case returned for n == 0, so n > 0 and n >= 0 select the same values
+arith.go | powPos | if x.Lo >= 0 { | >= -> > #1 | only Lo == 0 changes branch; the other branch gives -powUp(-0, n) = -0 for n >= 1, and mk stores a zero lower bound as -0 in both cases
+arith.go | powPos | if x.Hi >= 0 { | >= -> > #1 | only Hi == 0 changes branch; the other branch gives -powDown(-0, n) = -0, and mk stores a zero upper bound as +0 in both cases

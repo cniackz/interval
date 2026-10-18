@@ -251,3 +251,32 @@ func TestTightnessExtremes(t *testing.T) {
 		}
 	}
 }
+
+// TestHelpersInfinite pins the directed-rounding helpers on infinite operands, called directly.
+// The public operations never ask for these bounds (a lower bound of +Inf or an upper bound of
+// -Inf), so without this test the infinity checks in addDir, mulDir and divDir are not covered.
+func TestHelpersInfinite(t *testing.T) {
+	inf := math.Inf(1)
+	cases := []struct {
+		name      string
+		got, want float64
+	}{
+		{"addDown(+Inf, 0)", addDown(inf, 0), inf},
+		{"addDown(0, +Inf)", addDown(0, inf), inf},
+		{"addUp(-Inf, 0)", addUp(-inf, 0), -inf},
+		{"addUp(0, -Inf)", addUp(0, -inf), -inf},
+		{"mulDown(+Inf, 2)", mulDown(inf, 2), inf},
+		{"mulDown(2, +Inf)", mulDown(2, inf), inf},
+		{"mulUp(-Inf, 2)", mulUp(-inf, 2), -inf},
+		{"mulUp(2, -Inf)", mulUp(2, -inf), -inf},
+		{"divDown(+Inf, 2)", divDown(inf, 2), inf},
+		{"divUp(-Inf, 2)", divUp(-inf, 2), -inf},
+		{"divDown(2, +Inf)", divDown(2, inf), 0},
+		{"divUp(-2, +Inf)", divUp(-2, inf), 0},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
+	}
+}
