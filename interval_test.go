@@ -255,3 +255,21 @@ func TestStringRoundTrip(t *testing.T) {
 		t.Errorf("NaI prints as %q", s)
 	}
 }
+
+func TestHullNormalizesZero(t *testing.T) {
+	for _, got := range []Interval{Empty().Hull(Interval{0, 0}), Interval{0, 1}.Hull(Empty())} {
+		if !math.Signbit(got.Lo) || math.Signbit(got.Hi) {
+			t.Errorf("Hull with Empty did not normalize zero endpoints: %#v", got)
+		}
+	}
+}
+
+func TestNaIRoundTrip(t *testing.T) {
+	if got, err := Parse(nai().String()); !got.IsNaI() || !errors.Is(err, ErrInvalid) {
+		t.Errorf("Parse(%q) = %v, %v, want NaI and ErrInvalid", nai().String(), got, err)
+	}
+	p, q := Interval{1, 2}.DivSplit(Interval{ninf, 1})
+	if !p.Equal(Interval{ninf, 0}) || !q.Equal(Interval{1, inf}) {
+		t.Errorf("[1, 2] / [-Inf, 1] split = %v, %v, want [-inf, 0] and [1, +inf]", p, q)
+	}
+}

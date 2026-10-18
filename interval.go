@@ -159,9 +159,9 @@ func (x Interval) Hull(y Interval) Interval {
 	case kx == ill || ky == ill:
 		return nai()
 	case kx == empty:
-		return y
+		return mk(y.Lo, y.Hi)
 	case ky == empty:
-		return x
+		return mk(x.Lo, x.Hi)
 	}
 	return mk(min(x.Lo, y.Lo), max(x.Hi, y.Hi))
 }

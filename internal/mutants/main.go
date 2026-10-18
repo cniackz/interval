@@ -60,7 +60,7 @@ func loadEquivalent(path string) map[string]bool {
 	eq := map[string]bool{}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return eq
+		fatal(fmt.Errorf("reading the equivalent mutants file: %w (pass -equivalent to point at it)", err))
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {

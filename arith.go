@@ -179,9 +179,11 @@ func (x Interval) Div(y Interval) Interval {
 // IEEE 1788-2015, clause 10.5.5 (mulRevToPair), used by interval Newton methods (Moore, Kearfott
 // and Cloud, "Introduction to Interval Analysis," SIAM 2009, chapter 8). When x excludes zero and
 // zero is strictly inside y, the first result is the lower piece and the second the upper piece;
-// for example [1, 2] / [-1, 1] gives [-Inf, -1] and [1, +Inf]. The real pieces are disjoint;
-// after outward rounding they can share an endpoint when a quotient underflows. In every other case the first result
-// is x.Div(y) and the second is Empty (or NaI for NaI input).
+// for example [1, 2] / [-1, 1] gives [-Inf, -1] and [1, +Inf]. The real pieces are disjoint,
+// but the two results can share an endpoint: zero, when an endpoint of y is infinite
+// ([1, 2] / [-Inf, 1] gives [-Inf, 0] and [1, +Inf], since the quotients approach zero), or a
+// rounded bound, when a quotient underflows. In every other case the first result is x.Div(y)
+// and the second is Empty (or NaI for NaI input).
 func (x Interval) DivSplit(y Interval) (Interval, Interval) {
 	if r, done := pre2(x, y); done {
 		return r, r
@@ -214,9 +216,12 @@ func (x Interval) Sqr() Interval {
 }
 
 // Pown returns {a^n : a in x} for an integer n, rounded outward (IEEE 1788-2015, clause 9.1,
-// pown). Pown(0) is [1, 1] for every non-empty x, including [0, 0]. For n > 0 the result is tight
-// up to the rounding of each multiplication; for n < 0 it is [1, 1] divided by x.Pown(-n), so
-// [0, 0].Pown(-1) is Empty and [-1, 1].Pown(-2) is [1, +Inf]. Empty gives Empty and NaI gives NaI
+// pown). Pown(0) is [1, 1] for every non-empty x, including [0, 0]. For n > 0 each bound is
+// computed by repeated multiplication, rounded outward at every step, so it can be a few ulps
+// wider than the tightest bound (up to about 20 ulps for large n). For n < 0 it is [1, 1] divided
+// by x.Pown(-n), which loses more when x^-n overflows: [2, 2].Pown(math.MinInt) is [0, 2^-1024],
+// not [0, 2^-1074]. Every result is still an enclosure. [0, 0].Pown(-1) is Empty and
+// [-1, 1].Pown(-2) is [1, +Inf]. Empty gives Empty and NaI gives NaI
 // for every n.
 func (x Interval) Pown(n int) Interval {
 	switch x.kind() {

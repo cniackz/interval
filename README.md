@@ -101,6 +101,17 @@ simulator.
 **Worst case, not likelihood.** The bound covers every value consistent with the input bounds. It
 says nothing about which values are likely, and it is only as good as the inputs.
 
+**Pown is an enclosure, not the tightest bound.** `Pown` multiplies repeatedly and rounds
+outward at each step, so for `n > 0` a bound can be a few ulps wider than the tightest one (an
+attack measured up to about 20 ulps). For `n < 0` it divides one by `x.Pown(-n)`, which loses
+more when that power overflows: `[2, 2].Pown(math.MinInt)` gives `[0, 2^-1024]` instead of
+`[0, 2^-1074]`. `Sqr` is tight; for higher powers, the bound is a valid enclosure, a few ulps wide.
+
+**Small edges.** `String` prints NaI as `"[nai]"`, and `Parse("[nai]")` gives back NaI together
+with `ErrInvalid`, so NaI round-trips as an error, not as a value. `DivSplit` pieces can share the
+endpoint zero when the divisor is unbounded (`[1, 2] / [-Inf, 1]` gives `[-Inf, 0]` and
+`[1, +Inf]`).
+
 **No elementary functions.** `exp`, `log` and the trigonometric functions are not provided,
 because the Go `math` package documents no error bound for them.
 
@@ -113,6 +124,9 @@ because the Go `math` package documents no error bound for them.
   of 2Sum can overflow, and their analysis suggests the guard is not needed; an independent audit found 0 differences against `math/big`
   on millions of inputs without the guard. Candidate for removal in v1, only together with a test
   that pins the overflow-range behavior against the exact oracle.
+- **Pown tightness.** Compute `x^n` with one final directed rounding (or an exact `math/big`
+  power on the slow path) so that `Pown` matches the tightness of the basic operations, and handle
+  overflow of `x^-n` for negative `n` directly.
 - **Parse allocations.** `Parse("[0.1, 0.2]")` allocates 40 times; most of that can go.
 
 ## Testing
