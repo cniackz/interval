@@ -104,6 +104,17 @@ says nothing about which values are likely, and it is only as good as the inputs
 **No elementary functions.** `exp`, `log` and the trigonometric functions are not provided,
 because the Go `math` package documents no error bound for them.
 
+## v1 follow-ups
+
+- **The `huge` guard in TwoSum may be redundant.** `addDir` sends sums with an operand of magnitude
+  2^1000 or more to the exact `math/big` comparison, as protection against overflow inside TwoSum.
+  S. Boldo, S. Graillat and J.-M. Muller, "On the robustness of the 2Sum and Fast2Sum algorithms,"
+  ACM Transactions on Mathematical Software 44(1), 2017, show that 2Sum does not overflow
+  spuriously in round to nearest, and an independent audit found 0 differences against `math/big`
+  on millions of inputs without the guard. Candidate for removal in v1, only together with a test
+  that pins the overflow-range behavior against the exact oracle.
+- **Parse allocations.** `Parse("[0.1, 0.2]")` allocates 40 times; most of that can go.
+
 ## Testing
 
 - **Inclusion** is checked against an exact `math/big.Rat` oracle on random intervals and members,
