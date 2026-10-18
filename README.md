@@ -63,6 +63,29 @@ Behavior worth knowing:
 - Compare with `Equal`, not `==`.
 - The zero value is `[0, 0]`. Arithmetic, set and query methods do not allocate.
 
+## Benchmarks
+
+Apple silicon (darwin/arm64), Go 1.27.2, `go test -bench . -benchmem -count 10`, median of 10, operands
+bounded and positive unless noted.
+
+| Operation | ns/op | allocs/op |
+|---|---|---|
+| `Add` | 7.6 | 0 |
+| `Sub` | 7.4 | 0 |
+| `Mul` | 9.4 | 0 |
+| `Mul`, both operands containing zero | 15.4 | 0 |
+| `Div` | 10.7 | 0 |
+| `Sqrt` | 7.6 | 0 |
+| `Sqr` | 9.1 | 0 |
+| `Pown(5)` | 29.4 | 0 |
+| `Intersect` | 2.8 | 0 |
+| `Mid` | 1.8 | 0 |
+| `Parse("[0.1, 0.2]")` | 546 | 40 |
+| `String` | 97 | 3 |
+| plain `float64` add of both endpoints, for reference | 1.9 | 0 |
+
+Rigor costs about 4x a plain `float64` addition.
+
 ## Known limits
 
 **The dependency problem.** Interval arithmetic treats every occurrence of a variable as

@@ -1,25 +1,47 @@
 # Mutants declared equivalent, one per line:
 #   file | function | source line, trimmed | token -> replacement | why the behavior cannot change
-# The tool matches on the source text, not the line number, and reports these separately.
-round.go | addDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | an infinite a then reaches the overflow branch, which returns r and -sign(r); rd and ru map that to the same bound, because no well-formed operation asks for a lower bound of +Inf or an upper bound of -Inf
-round.go | mulDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | an infinite a then reaches the overflow branch, which returns r and -sign(r); rd and ru map that to the same bound, because no well-formed operation asks for a lower bound of +Inf or an upper bound of -Inf
-round.go | addDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | b -> a | same as a -> b, for an infinite b
-round.go | mulDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | b -> a | same as a -> b, for an infinite b
-round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | a -> b | the guard only chooses between TwoSum and the exact math/big comparison; both give the exact sign
-round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | b -> a | same: both paths are exact
-round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | < -> <= | at exactly 2^1000 both paths are exact
-round.go | mulDir | if math.Abs(r) >= tiny { | >= -> > | at exactly 2^-900 both the FMA path and math/big are exact
-round.go | divDir | if a == 0 || math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | b is never 0 here; a == 0 then takes the math/big path, which finds the exact quotient 0; an infinite a reaches the overflow branch as in addDir
-round.go | divDir | aa, ab := math.Abs(a), math.Abs(b) | b -> a | the guard on b is conservative: with r and a in range the FMA remainder is exact for any b, so dropping it only moves cases from math/big to the FMA path
-round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | >= -> > | at exactly the threshold both paths are exact
-round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | <= -> < | at exactly the threshold both paths are exact
-round.go | sqrtDir | if x >= tiny && x <= huge { | >= -> > | at exactly the threshold both paths are exact
-round.go | sqrtDir | if x >= tiny && x <= huge { | <= -> < | at exactly the threshold both paths are exact
-arith.go | Div | case a > 0: | > -> >= | in this branch a == 0 gives divDown(0, d) = 0, the same bound as the a == 0 case below
-arith.go | Div | case a > 0: | a -> b | x is not mixed here, so b > 0 holds exactly when a >= 0, and a == 0 gives the same bound as its own case
-arith.go | Div | case b == 0: // x = [a, 0], a < 0 | b -> a | a < 0 here, so the default case runs with b == 0 and gives the same bound
-arith.go | Div | case b == 0: | b -> a | a < 0 here, so the default case runs with b == 0 and gives the same bound
-arith.go | Pown | case n > 0: | > -> >= | n == 0 returned earlier
-arith.go | powPos | if x.Lo >= 0 { | >= -> > | for Lo == 0 the other branch gives -powUp(0, n) = -0, the same value
-arith.go | powPos | if x.Hi >= 0 { | >= -> > | for Hi == 0 the other branch gives -powDown(0, n) = -0, the same value
-
+# The tool matches on file, function and source text (not the line number) and reports these
+# separately from real survivors. A declared mutant that the tests kill fails the run, so a wrong
+# declaration cannot hide.
+#
+# Two facts carry most of the arguments below:
+#   F1 (two exact paths). Each *Dir function returns the sign of (exact - r) either from an
+#      error-free transformation or from an exact math/big comparison (106-bit products, or a
+#      2200-bit sum, compared with r). Both give the exact sign whenever the error-free path's
+#      preconditions hold: TwoSum is exact for finite operands whose sum does not overflow
+#      (Knuth, TAOCP 4.2.2, theorem B); the FMA product error is exact when e_a + e_b >= -970
+#      (Boldo and Muller 2011), implied by |r| >= 2^-900; the FMA division remainder and square
+#      root residual are exact without underflow (Bohlender et al. 1991), implied by the 2^-900
+#      and 2^1000 guards. A mutant that moves a guard by one comparison (< to <=, >= to >) only
+#      changes which exact path handles the single value 2^-900 or 2^1000, where both preconditions
+#      hold, so r and the sign are the same.
+#   F2 (infinite operands). Without its infinity check, an infinite operand of addDir or mulDir
+#      reaches "if math.IsInf(r, 0) { return r, -sign(r) }". rd(+Inf, -1) is MaxFloat64 and
+#      ru(-Inf, +1) is -MaxFloat64, so the result differs from the exact path only if a caller asks
+#      for a lower bound that is +Inf or an upper bound that is -Inf. No caller does: Add, Sub, Mul
+#      and Div compute lower bounds from (Lo, Lo), (Lo, -Hi) or table entries whose exact value is
+#      never +Inf, because a well-formed Lo is never +Inf and the tables pair signs so that a
+#      lower-bound product or quotient of an infinity is -Inf; powDown is only called on Mig() and
+#      on -Hi, which are finite for a non-empty interval. The 0 * Inf rule is checked before
+#      these lines and is not affected.
+round.go | addDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | F2: with the check reading only b, an infinite a takes the overflow branch, whose bounds match the exact path for every bound a caller asks for
+round.go | mulDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | F2, for mulDir
+round.go | addDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | b -> a | F2, with the roles of a and b swapped
+round.go | mulDir | if math.IsInf(a, 0) || math.IsInf(b, 0) { | b -> a | F2, for mulDir, with the roles of a and b swapped
+round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | a -> b | F1: the guard then tests b twice, so some sums with |a| >= 2^1000 go to TwoSum; TwoSum stays exact for them because it is exact for every finite pair whose sum does not overflow, and overflow returned earlier
+round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | b -> a | F1, same as a -> b with the roles swapped
+round.go | addDir | if math.Abs(a) < huge && math.Abs(b) < huge { | < -> <= | F1: only |a| or |b| exactly 2^1000 changes path, and both paths are exact there
+round.go | mulDir | if math.Abs(r) >= tiny { | >= -> > | F1: only |r| exactly 2^-900 changes path; there e_a + e_b >= -901 > -970, so the FMA error is exact, and math/big is exact by construction
+round.go | divDir | if a == 0 || math.IsInf(a, 0) || math.IsInf(b, 0) { | a -> b | b is never 0 here (Div and DivSplit return before dividing by an interval whose endpoint used here is 0), so the first test is false; then a == 0 falls through to the math/big path (|a| < 2^-900), which compares 0 with r * b = 0 and returns d = 0, the same as the early return; an infinite a reaches the overflow branch, and F2 applies
+round.go | divDir | aa, ab := math.Abs(a), math.Abs(b) | b -> a | F1: ab becomes |a|, so the guard stops checking |b|; when |a| and |r| are in [2^-900, 2^1000] the remainder a - r*b has magnitude below ulp(r) * |b|, about |a| * 2^-52 >= 2^-952, far above the underflow threshold, so the FMA remainder is still exact (Bohlender et al. 1991) and the sign is the same
+round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | >= -> > | F1: only a value exactly equal to 2^-900 changes path, and both paths are exact there
+round.go | divDir | if aa >= tiny && aa <= huge && ab >= tiny && ab <= huge && math.Abs(r) >= tiny { | <= -> < | F1: only a value exactly equal to 2^1000 changes path, and both paths are exact there
+round.go | sqrtDir | if x >= tiny && x <= huge { | >= -> > | F1: only x exactly 2^-900 changes path; its square root 2^-450 is exact, so both paths return d = 0
+round.go | sqrtDir | if x >= tiny && x <= huge { | <= -> < | F1: only x exactly 2^1000 changes path; its square root 2^500 is exact, so both paths return d = 0
+arith.go | Div | case a > 0: | > -> >= | this case is reached with x not mixed and not [0, 0]; the mutant also sends a == 0 here, giving mk(divDown(0, d), inf) = mk(0, inf) (divDir returns 0 exactly for a == 0), which is what the a == 0 case returns
+arith.go | Div | case a > 0: | a -> b | x is not mixed, so either a >= 0 (then b > 0) or b <= 0; b > 0 therefore selects a > 0 plus a == 0, and a == 0 gives the same result as its own case, as in the previous line
+arith.go | Div | case b == 0: // x = [a, 0], a < 0 | b -> a | a < 0 when this line is reached (a > 0 and a == 0 matched earlier), so the mutant test a == 0 is false and the default case runs with b == 0: mk(-inf, divUp(0, d)) = mk(-inf, 0), the same result
+arith.go | Div | case b == 0: | b -> a | the same argument in the y = [c, 0] branch: the default case gives mk(divDown(0, c), inf) = mk(0, inf)
+arith.go | Pown | case n > 0: | > -> >= | the previous case returned for n == 0, so n > 0 and n >= 0 select the same values
+arith.go | powPos | if x.Lo >= 0 { | >= -> > | only Lo == 0 changes branch; the other branch gives -powUp(-0, n) = -0 for n >= 1, and mk stores a zero lower bound as -0 in both cases
+arith.go | powPos | if x.Hi >= 0 { | >= -> > | only Hi == 0 changes branch; the other branch gives -powDown(-0, n) = -0, and mk stores a zero upper bound as +0 in both cases
